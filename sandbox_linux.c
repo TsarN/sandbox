@@ -52,69 +52,65 @@ const char *safe_paths[] = {
 };
 
 char * normalize_path(const char * src, size_t src_len) {
-    char * res;
-    size_t res_len;
+	char * res;
+	size_t res_len;
 
-    const char * ptr = src;
-    const char * end = &src[src_len];
-    const char * next;
+	const char * ptr = src;
+	const char * end = &src[src_len];
+	const char * next;
 
-    if (src_len == 0 || src[0] != '/') {
+	if (src_len == 0 || src[0] != '/') {
+		char pwd[PATH_MAX];
+		size_t pwd_len;
 
-        // relative path
+		if (getcwd(pwd, sizeof(pwd)) == NULL) {
+			return NULL;
+		}
 
-        char pwd[PATH_MAX];
-        size_t pwd_len;
+		pwd_len = strlen(pwd);
+		res = malloc(pwd_len + 1 + src_len + 1);
+		memcpy(res, pwd, pwd_len);
+		res_len = pwd_len;
+	} else {
+		res = malloc((src_len > 0 ? src_len : 1) + 1);
+		res_len = 0;
+	}
 
-        if (getcwd(pwd, sizeof(pwd)) == NULL) {
-            return NULL;
-        }
+	for (ptr = src; ptr < end; ptr = next + 1) {
+		size_t len;
+		next = memchr(ptr, '/', end-ptr);
+		if (next == NULL) {
+			next = end;
+		}
+		len = next - ptr;
+		switch(len) {
+		case 2:
+			if (ptr[0] == '.' && ptr[1] == '.') {
+				const char * slash = memrchr(res, '/', res_len);
+				if (slash != NULL) {
+					res_len = slash - res;
+				}
+				continue;
+			}
+			break;
+		case 1:
+			if (ptr[0] == '.') {
+				continue;
+			}
+			break;
+		case 0:
+			continue;
+		}
+		res[res_len++] = '/';
+		memcpy(&res[res_len], ptr, len);
+		res_len += len;
+	}
 
-        pwd_len = strlen(pwd);
-        res = malloc(pwd_len + 1 + src_len + 1);
-        memcpy(res, pwd, pwd_len);
-        res_len = pwd_len;
-    } else {
-        res = malloc((src_len > 0 ? src_len : 1) + 1);
-        res_len = 0;
-    }
-
-    for (ptr = src; ptr < end; ptr=next+1) {
-        size_t len;
-        next = memchr(ptr, '/', end-ptr);
-        if (next == NULL) {
-            next = end;
-        }
-        len = next-ptr;
-        switch(len) {
-        case 2:
-            if (ptr[0] == '.' && ptr[1] == '.') {
-                const char * slash = memrchr(res, '/', res_len);
-                if (slash != NULL) {
-                        res_len = slash - res;
-                }
-                continue;
-            }
-            break;
-        case 1:
-            if (ptr[0] == '.') {
-                    continue;
-
-            }
-            break;
-        case 0:
-            continue;
-        }
-        res[res_len++] = '/';
-        memcpy(&res[res_len], ptr, len);
-        res_len += len;
-    }
-
-    if (res_len == 0) {
-        res[res_len++] = '/';
-    }
-    res[res_len] = '\0';
-    return res;
+	if (res_len == 0) {
+		res[res_len++] = '/';
+	}
+	res[res_len] = '\0';
+	return res;
 }
 
 bool is_path_safe_impl(const char *path) {
