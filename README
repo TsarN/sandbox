@@ -1,0 +1,6 @@
+Sandbox provides means to sandbox untrusted applications
+and is primarily meant to be used in programming contests.
+
+It depends on libseccomp library, which you can find here:
+
+https://github.com/seccomp/libseccomp
