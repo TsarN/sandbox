@@ -8,16 +8,14 @@ typedef struct {
 	char *path;
 	char **args;
 	char **env;
+	
+	char *s_stdin; /* string to send to stdin */
 
 	bool use_env;
-	bool use_dup; 
+	bool use_files; 
 	long time_limit; /* milliseconds */
 	long wall_time_limit; /* milliseconds */
 	long mem_limit; /* bytes */
-
-	int fd_stdin;
-	int fd_stdout;
-	int fd_stderr;
 
 	bool debug;
 } sandbox_config_t;
@@ -27,6 +25,8 @@ typedef struct {
 	int exit_code;
 	long cpu_time; /* milliseconds */
 	long mem_usage; /* bytes */
+	char *s_stdout; /* received stdout */
+	char *s_stderr; /* received stderr */
 } sandbox_result_t;
 
 #define ER_OK   0
