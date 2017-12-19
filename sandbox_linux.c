@@ -478,7 +478,7 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 		if (cfg->use_dup) {
 			dup2(cfg->fd_stdin, 0);
 			dup2(cfg->fd_stdout, 1);
-			//dup2(cfg->fd_stderr, 2);
+			dup2(cfg->fd_stderr, 2);
 		}
 
 		if (cfg->time_limit > 0) {
