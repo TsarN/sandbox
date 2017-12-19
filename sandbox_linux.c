@@ -15,8 +15,10 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <semaphore.h>
 #include <string.h>
 #include <limits.h>
+#include <fcntl.h>
 
 
 const char *safe_paths[] = {
@@ -434,7 +436,30 @@ void blacklist(scmp_filter_ctx ctx, const char **group, unsigned long action) {
 	}
 }
 
-#define SYSCALL_LEN 512
+#define SYSCALL_LEN 1024
+
+char *read_all(int fd) {
+	char *res = malloc(1);
+	res[0] = (char)0;
+
+	char buf[1024];
+	int z;
+	int len = 1;
+	while ((z = read(fd, buf, sizeof(buf))) != 0)
+	{
+		len += z;
+		char *tmp = realloc(res, len);
+		if (tmp) {
+			res = tmp;
+		} else {
+			close(fd);
+			return NULL;
+		}
+		strncat(res, buf, z);
+	} 
+	close(fd);
+	return res;
+}
 
 sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 	sandbox_result_t result;
@@ -447,40 +472,45 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 
 	for (const char **c = syscalls_deny; *c; ++c) {
 		int i = seccomp_syscall_resolve_name(*c);
-		if (i != __NR_SCMP_ERROR) {
+		if (i >= 0) {
 			action[i] = PTRACE_DENY;
 		}
 	}
 
 	for (const char **c = syscalls_fs; *c; ++c) {
 		int i = seccomp_syscall_resolve_name(*c);
-		if (i != __NR_SCMP_ERROR) {
+		if (i >= 0) {
 			action[i] = PTRACE_FS;
 		}
 	}
 
 	for (const char **c = syscalls_once; *c; ++c) {
 		int i = seccomp_syscall_resolve_name(*c);
-		if (i != __NR_SCMP_ERROR) {
+		if (i >= 0) {
 			action[i] = PTRACE_ONCE;
 		}
 	}
 
 	for (const char **c = syscalls_sec; *c; ++c) {
 		int i = seccomp_syscall_resolve_name(*c);
-		if (i != __NR_SCMP_ERROR) {
+		if (i >= 0) {
 			action[i] = PTRACE_SEC;
 		}
 	}
 
+	int stdin_pipe[2];
+	int stdout_pipe[2];
+	int stderr_pipe[2];
+
+	pipe(stdin_pipe);
+	pipe(stdout_pipe);
+	pipe(stderr_pipe);
+
+	write(stdin_pipe[1], cfg->s_stdin, strlen(cfg->s_stdin) + 1);
+	close(stdin_pipe[1]);
+
 	int pid = fork();
 	if (pid == 0) {
-		if (cfg->use_dup) {
-			dup2(cfg->fd_stdin, 0);
-			dup2(cfg->fd_stdout, 1);
-			dup2(cfg->fd_stderr, 2);
-		}
-
 		if (cfg->time_limit > 0) {
 			set_cpu_limit(cfg->time_limit);
 		}
@@ -494,12 +524,19 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 		blacklist(ctx, syscalls_deny, SCMP_ACT_ERRNO(EPERM));
 		blacklist(ctx, syscalls_sec, SCMP_ACT_ERRNO(EPERM));
 
-		ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-		seccomp_load(ctx);
 
 		if (cfg->debug) {
 			fprintf(stderr, "(target) starting %s\n", cfg->path);
 		}
+
+		close(stdout_pipe[0]);
+		close(stderr_pipe[0]);
+
+		dup2(stdin_pipe[0], 0);
+		dup2(stdout_pipe[1], 1);
+		//dup2(stderr_pipe[1], 2);
+	
+		seccomp_load(ctx);
 
 		if (cfg->use_env) {
 			execvpe(cfg->path, cfg->args, cfg->env);
@@ -511,25 +548,36 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 		}
 		exit(254); // TODO: we need to somehow return ER_FAIL
 	} else if (pid < 0) {
+		close(stdin_pipe[0]);
+		close(stdout_pipe[1]);
+		close(stderr_pipe[1]);
+		close(stdout_pipe[1]);
+		close(stderr_pipe[1]);
 		if (cfg->debug) {
 			fprintf(stderr, "(sandbox) unable to fork\n");
 			fprintf(stderr, "(sandbox) verdict: fail\n");
 		}
 		return result;
 	} else {
+		ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_EXITKILL);
+		close(stdin_pipe[0]);
+		close(stdout_pipe[1]);
+		close(stderr_pipe[1]);
 		int wtpid = fork();
 		if (wtpid == 0) {
 			usleep(cfg->wall_time_limit * 1000);
 			exit(0);
 		}
 		if (wtpid < 0) {
+			close(stdout_pipe[0]);
+			close(stderr_pipe[0]);
 			if (cfg->debug) {
 				fprintf(stderr, "(sandbox) unable to fork\n");
 				fprintf(stderr, "(sandbox) verdict: fail\n");
 			}
 			return result;
 		}
-		ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_EXITKILL);
+
 		int pstatus;
 		bool ex = false;
 		bool insyscall = false;
@@ -547,7 +595,7 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 				result.verdict = ER_WT;
 				goto ret;
 			}
-			
+
 			if (WSTOPSIG(pstatus) == SIGTRAP) {
 				int syscall = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * ORIG_RAX, 0);
 				insyscall = !insyscall;
@@ -580,7 +628,7 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 						q:;
 						if (!is_path_safe(buf)) {
 							if (cfg->debug) {
-								fprintf(stderr, "(sandbox) security violation: forbidden path\n");
+								fprintf(stderr, "(sandbox) security violation: forbidden path %s\n", buf);
 							}
 							result.verdict = ER_SE;
 						}
@@ -658,6 +706,18 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 		result.verdict = ER_ML;
 	}
 
+	result.s_stdout = read_all(stdout_pipe[0]);
+	if (!result.s_stdout) {
+		fprintf(stderr, "(sandbox) fail: error when reading from stdout pipe\n");
+		result.verdict = ER_FAIL;
+	}
+
+	result.s_stderr = read_all(stderr_pipe[0]);
+	if (!result.s_stderr) {
+		fprintf(stderr, "(sandbox) fail: error when reading from stderr pipe\n");
+		result.verdict = ER_FAIL;
+	}
+
 	if (cfg->debug) {
 		switch (result.verdict) {
 			case ER_OK: fprintf(stderr, "(sandbox) verdict: ok.\n"); break;
@@ -669,5 +729,9 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 			case ER_FAIL: fprintf(stderr, "(sandbox) verdict: fail\n"); break;
 		}
 	}
+
+	fprintf(stderr, "(sandbox) stdout:\n%s\n", result.s_stdout);
+	fprintf(stderr, "(sandbox) stderr:\n%s\n", result.s_stderr);
+
 	return result;
 }

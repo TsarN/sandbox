@@ -12,7 +12,6 @@ typedef struct {
 	char *s_stdin; /* string to send to stdin */
 
 	bool use_env;
-	bool use_files; 
 	long time_limit; /* milliseconds */
 	long wall_time_limit; /* milliseconds */
 	long mem_limit; /* bytes */
