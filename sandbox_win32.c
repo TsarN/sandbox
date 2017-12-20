@@ -26,8 +26,8 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 	SECURITY_ATTRIBUTES sa;
 	
 	ZeroMemory(&pi, sizeof(pi));
-    ZeroMemory(&si, sizeof(si));
-    ZeroMemory(&sa, sizeof(sa));
+	ZeroMemory(&si, sizeof(si));
+	ZeroMemory(&sa, sizeof(sa));
 	
 	sa.nLength = sizeof(sa);
 	sa.bInheritHandle = TRUE;
@@ -56,8 +56,8 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 	si.cb = sizeof(si);
 	si.dwFlags = STARTF_USESTDHANDLES;
 	si.hStdError = hChildStderrWr;
-    si.hStdOutput = hChildStdoutWr;
-    si.hStdInput = hChildStdinRd;
+	si.hStdOutput = hChildStdoutWr;
+	si.hStdInput = hChildStdinRd;
 	
 	if (!CreateProcess(cfg->path, NULL, NULL, NULL, true, CREATE_NO_WINDOW | DEBUG_PROCESS, NULL, NULL, &si, &pi)) {
 		if (cfg->debug) {
@@ -65,16 +65,16 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 		}
 	} else {
 		DWORD written;
-        BOOL ok;
-        // Write terminating zero to make EOF
-        ok = WriteFile(hChildStdinWr, cfg->s_stdin, strlen(cfg->s_stdin) + 1, &written, NULL);
-        CloseHandle(hChildStdoutWr);
+		BOOL ok;
+		// Write terminating zero to make EOF
+		ok = WriteFile(hChildStdinWr, cfg->s_stdin, strlen(cfg->s_stdin) + 1, &written, NULL);
+		CloseHandle(hChildStdoutWr);
 		CloseHandle(hChildStderrWr);
-        CloseHandle(hChildStdinWr);
-        if (!ok || written <= strlen(cfg->s_stdin)) {
-            PROCESS_CLOSE();
-            return result;
-        }
+		CloseHandle(hChildStdinWr);
+		if (!ok || written <= strlen(cfg->s_stdin)) {
+			PROCESS_CLOSE();
+			return result;
+		}
 		
 		DEBUG_EVENT de;
 		int proc = 0;
@@ -157,14 +157,14 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 				}
 				
 				SYSTEMTIME st;
-                GetSystemTime(&st);
-                if (SystemTimeToFileTime(&st, &exit)) {
-                    time = ftime_to_ll(&exit) - ftime_to_ll(&create);
-                    if (time / 10000 > cfg->wall_time_limit) {
-                        result.verdict = ER_WT;
+				GetSystemTime(&st);
+				if (SystemTimeToFileTime(&st, &exit)) {
+					time = ftime_to_ll(&exit) - ftime_to_ll(&create);
+					if (time / 10000 > cfg->wall_time_limit) {
+						result.verdict = ER_WT;
 						good = false;
 					}
-                } else {
+				} else {
 					if (cfg->debug) {
 						fprintf(stderr, "(sandbox) SystemTimeToFileTime failed\n");
 					}
@@ -180,13 +180,13 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 			}
 			
 			PROCESS_MEMORY_COUNTERS mem;
-            if (GetProcessMemoryInfo(pi.hProcess, &mem, sizeof(mem))) {
+			if (GetProcessMemoryInfo(pi.hProcess, &mem, sizeof(mem))) {
 				result.mem_usage = mem.PeakWorkingSetSize;
-                if (result.mem_usage > cfg->mem_limit) {
-                    result.verdict = ER_ML;
+				if (result.mem_usage > cfg->mem_limit) {
+					result.verdict = ER_ML;
 					good = false;
 				}
-            } else {
+			} else {
 				if (cfg->debug) {
 					fprintf(stderr, "(sandbox) GetProcessMemoryInfo failed\n");
 				}
