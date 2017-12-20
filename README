@@ -1,6 +1,14 @@
-Sandbox provides means to sandbox untrusted applications
+Sandbox provides means to sandbox untrusted applications,
+limit time and memory usage, detect runtime errors
 and is primarily meant to be used in programming contests.
+It targets Linux and Windows operating systems.
 
-It depends on libseccomp library, which you can find here:
+On Linux, it depends on libseccomp library, which you can find here: https://github.com/seccomp/libseccomp
+You will need Linux kernel >= 3.5 to use it.
 
-https://github.com/seccomp/libseccomp
+On Windows, it depends on PSAPI
+
+Please note, that currently, Windows version is not considered
+secure enough to be used in untrusted environment.
+Linux version is safer, but there are no guarantees it will
+work as intended either. Use at your own risk.
