@@ -534,7 +534,7 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 
 		dup2(stdin_pipe[0], 0);
 		dup2(stdout_pipe[1], 1);
-		//dup2(stderr_pipe[1], 2);
+		dup2(stderr_pipe[1], 2);
 	
 		seccomp_load(ctx);
 
@@ -542,9 +542,6 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 			execvpe(cfg->path, cfg->args, cfg->env);
 		} else {
 			execvp(cfg->path, cfg->args);
-		}
-		if (cfg->debug) {
-			fprintf(stderr, "(target) unable to execve\n");
 		}
 		exit(254); // TODO: we need to somehow return ER_FAIL
 	} else if (pid < 0) {
