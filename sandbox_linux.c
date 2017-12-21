@@ -20,6 +20,20 @@
 #include <limits.h>
 #include <fcntl.h>
 
+#if __x86_64__
+/* x86_64 */
+
+#define SYSCALL_ARG0 (sizeof(long) * ORIG_RAX)
+#define SYSCALL_ARG1 (sizeof(long) * RDI)
+
+#else
+/* i386 */
+
+#define SYSCALL_ARG0 (sizeof(long) * ORIG_EAX)
+#define SYSCALL_ARG1 (sizeof(long) * EBX)
+
+#endif
+
 
 const char *safe_paths[] = {
 	"/lib/",
@@ -535,6 +549,8 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 		dup2(stdin_pipe[0], 0);
 		dup2(stdout_pipe[1], 1);
 		dup2(stderr_pipe[1], 2);
+
+        ptrace(PTRACE_TRACEME, 0, 0, 0);
 	
 		seccomp_load(ctx);
 
@@ -594,7 +610,7 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 			}
 
 			if (WSTOPSIG(pstatus) == SIGTRAP) {
-				int syscall = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * ORIG_RAX, 0);
+				int syscall = ptrace(PTRACE_PEEKUSER, pid, SYSCALL_ARG0, 0);
 				insyscall = !insyscall;
 				unsigned long data = action[syscall];
 
@@ -607,7 +623,7 @@ sandbox_result_t sandbox_run(const sandbox_config_t *cfg) {
 					}
 
 					if (data == PTRACE_FS) {						
-						unsigned long arg1 = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * RDI, 0);
+						unsigned long arg1 = ptrace(PTRACE_PEEKUSER, pid, SYSCALL_ARG1, 0);
 						char buf[PATH_MAX];
 						unsigned long idx;
 						memset(buf, 0, PATH_MAX);
